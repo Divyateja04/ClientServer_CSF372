@@ -71,7 +71,17 @@ struct current_vertex_data
 	int current_vertex;
 };
 
-// Create and Initialize queue
+// Code for queue
+
+// Queue structure
+struct Queue
+{
+    int items[MAX_QUEUE_SIZE];
+    int front;
+    int rear;
+};
+
+// Function to create an empty queue
 struct Queue *createQueue()
 {
     struct Queue *queue = (struct Queue *)malloc(sizeof(struct Queue));
@@ -80,50 +90,103 @@ struct Queue *createQueue()
     return queue;
 }
 
+// Function to check if the queue is empty
 int isEmpty(struct Queue *queue)
 {
-    return (queue->front == -1);
+    return queue->front == -1;
 }
 
+// Function to check if the queue is full
+int isFull(struct Queue *queue)
+{
+    return queue->rear == MAX_QUEUE_SIZE - 1;
+}
+
+// Function to enqueue an item to the queue
 void enqueue(struct Queue *queue, int value)
 {
-    if (queue->rear == MAX_VERTICES - 1)
+    if (isFull(queue))
     {
-        printf("Queue is full\n");
+        printf("Queue is full. Cannot enqueue %d.\n", value);
         return;
     }
-    if (queue->front == -1)
+
+    if (isEmpty(queue))
     {
         queue->front = 0;
     }
-    queue->node_size[queue->rear++] = value;
+
+    queue->rear++;
+    queue->items[queue->rear] = value;
+    printf("Enqueued %d to the queue.\n", value);
 }
 
+// Function to dequeue an item from the queue
 int dequeue(struct Queue *queue)
+{
+    int item;
+
+    if (isEmpty(queue))
+    {
+        printf("Queue is empty. Cannot dequeue.\n");
+        return -1;
+    }
+
+    item = queue->items[queue->front];
+    queue->front++;
+
+    if (queue->front > queue->rear)
+    {
+        // Reset the queue after all elements are dequeued
+        queue->front = queue->rear = -1;
+    }
+
+    printf("Dequeued %d from the queue.\n", item);
+    return item;
+}
+
+// Function to get the front item of the queue without removing it
+int front(struct Queue *queue)
 {
     if (isEmpty(queue))
     {
-        printf("Queue is empty\n");
-        exit(EXIT_FAILURE);
+        printf("Queue is empty.\n");
+        return -1;
     }
-    int value = queue->node_size[queue->front];
-    if (queue->front == queue->rear)
-    {
-        queue->front = -1;
-        queue->rear = -1;
-    }
-    else
-    {
-        queue->front++;
-    }
-    return value;
+
+    return queue->items[queue->front];
 }
 
+int queueSize(struct Queue* queue)
+{
+	if(isEmpty(queue))
+	{
+		return 0;
+	}
+	return queue->rear - queue->front;
+}
+
+// Function to print the elements of the queue
+void display(struct Queue *queue)
+{
+    int i;
+    if (isEmpty(queue))
+    {
+        printf("Queue is empty.\n");
+        return;
+    }
+
+    printf("Queue elements: ");
+    for (i = queue->front; i <= queue->rear; i++)
+    {
+        printf("%d ", queue->items[i]);
+    }
+    printf("\n");
+}
 struct data_to_thread
 {
     int msg_queue_id;
     struct msg_buffer msg;
-    struct Queue queue;
     int index;
     int number_of_nodes;
     int **adjacency_matrix;
@@ -143,8 +206,8 @@ void *bfs_subthread(void *arg)
 	dtt->msg.data.graph_name[dtt->index] = dtt->currentVertexData.current_vertex;
 	dtt->index++;
 	dtt->msg.data.graph_name[dtt->index]= '*';
-    //Create Queue
-    dtt->queue.bfs_queue= *createQueue();
+  	//Create Queue
+    	struct Queue* bfs_queue= createQueue();
 
 	//Unlock
 	pthread_mutex_unlock(&dtt->mutexLock);
@@ -152,10 +215,10 @@ void *bfs_subthread(void *arg)
 	//Loop
 	for(int i=0; i<dtt->number_of_nodes; i++)
 	{
-		if((dtt->adjacency_matrix[dtt->currentVertexData.current_vertex][i]==1) or (dtt->visited[i]==0)
-        {
-            enqueue(bfs_queue, i);
-        }
+		if((dtt->adjacency_matrix[dtt->currentVertexData.current_vertex][i]==1) && (dtt->visited[i]==0))
+        	{
+            		enqueue(bfs_queue, i);
+        	}	
     }
 
     //Exit
@@ -166,7 +229,7 @@ void *bfs_subthread(void *arg)
 void *bfs_mainthread(void *arg)
 {
     struct data_to_thread *dtt = (struct data_to_thread *)arg;
-    dtt->queue.bfs_queue= *createQueue();
+    struct Queue* bfs_queue= createQueue();
     //Connect to shared memory
     key_t shm_key;
     int shm_id;
@@ -219,6 +282,7 @@ void *bfs_mainthread(void *arg)
     fclose(fptr);
 
     int starting_vertex= dtt->currentVertexData.current_vertex;
+    dtt->visited = (int *)malloc(dtt->number_of_nodes * sizeof(int));
     dtt->visited[starting_vertex]=1;
     //push starting vertex into queue
     enqueue(bfs_queue, starting_vertex);
@@ -226,21 +290,22 @@ void *bfs_mainthread(void *arg)
     while(!isEmpty(bfs_queue))
     {
         //fix this
-        int array[queue.size];
+        int queue_size= queueSize(bfs_queue);
+        int array[queue_size];
         //Copy entries into array, empty queue
         int entry=0;
         array[entry++]= dequeue(bfs_queue);
-        pthread_t thread_ids[array.size];
+        pthread_t subthread_ids[queue_size];
 
-        for(int i=0; i<array.size; i++)
+        for(int i=0; i<queue_size; i++)
         {
             //create new struct vertex
-            pthread_create(&thread_ids[i], NULL< bfs_subthread, (void *) dtt)
+            pthread_create(&subthread_ids[i], NULL, bfs_subthread, (void *) dtt);
         }
 
         for (int i = 0; i < dtt->number_of_nodes; i++)
         {
-            pthread_join(subthread_id[i], NULL);
+            pthread_join(subthread_ids[i], NULL);
         }
 
     }
@@ -266,9 +331,133 @@ void *bfs_mainthread(void *arg)
 
     // Exit the DFS thread
     printf("[Secondary Server] DFS Request: Exiting DFS Request\n");
-    printf("[Secondary Server] Successfully Completed Operation 3\n");
+    printf("[Secondary Server] Successfully Completed Operation 4\n");
     pthread_exit(NULL);
 }
 
-	
+int main()
+{
+    // Initialize the server
+    printf("[Secondary Server] Initializing Secondary Server...\n");
+
+    // Create the message queue
+    key_t key;
+    int msg_queue_id;
+    struct msg_buffer msg;
+
+    // Link it with a key which lets you use the same key to communicate from both sides
+    if ((key = ftok(".", 'B')) == -1)
+    {
+        perror("[Secondary Server] Error while generating key of the file");
+        exit(EXIT_FAILURE);
+    }
+
+    // Create the message queue
+    if ((msg_queue_id = msgget(key, 0644)) == -1)
+    {
+        perror("[Secondary Server] Error while connecting with Message Queue");
+        exit(EXIT_FAILURE);
+    }
+    printf("[Secondary Server] Successfully connected to the Message Queue with Key:%d ID:%d\n", key, msg_queue_id);
+
+    // Store the thread_ids thread
+    pthread_t thread_ids[200];
+
+    int channel;
+    printf("[Secondary Server] Enter the channel number: ");
+    scanf("%d", &channel);
+    if (channel == 1)
+    {
+        channel = SECONDARY_SERVER_CHANNEL_1;
+    }
+    else
+    {
+        channel = SECONDARY_SERVER_CHANNEL_2;
+    }
+
+    printf("[Secondary Server] Using Channel: %d\n", channel);
+
+    // Listen to the message queue for new requests from the clients
+    while (1)
+    {
+        struct data_to_thread *dtt = (struct data_to_thread *)malloc(sizeof(struct data_to_thread)); // Declare dtt here
+
+        if (msgrcv(msg_queue_id, &msg, sizeof(msg.data), channel, 0) == -1)
+        {
+            perror("[Secondary Server] Error while receiving message from the client");
+            exit(EXIT_FAILURE);
+        }
+        else
+        {
+            printf("[Secondary Server] Received a message from Client: Op: %ld File Name: %s\n", msg.data.operation, msg.data.graph_name);
+            /*
+            if (msg.data.operation == 3)
+            {
+                // Operation code for DFS request
+                // Create a data_to_thread structure
+                dtt->msg_queue_id = msg_queue_id;
+                dtt->msg = msg;
+
+                // Determine the channel based on seq_num
+                int channel;
+                if (msg.data.seq_num % 2 == 1)
+                {
+                    channel = SECONDARY_SERVER_CHANNEL_1;
+                }
+                else
+                {
+                    channel = SECONDARY_SERVER_CHANNEL_2;
+                }
+
+                // Set the channel in the message structure
+                dtt->msg.msg_type = channel;
+                dtt->index = 0;
+                // Create a new thread to handle BFS
+                if (pthread_create(&thread_ids[msg.data.seq_num], NULL, dfs_mainthread, (void *)dtt) != 0)
+                {
+                    perror("[Secondary Server] Error in DFS thread creation");
+                    exit(EXIT_FAILURE);
+                }
+            }*/
+            if (msg.data.operation == 4)
+            {
+                // Operation code for DFS request
+                // Create a data_to_thread structure
+                dtt->msg_queue_id = msg_queue_id;
+                dtt->msg = msg;
+
+                // Determine the channel based on seq_num
+                int channel;
+                if (msg.data.seq_num % 2 == 1)
+                {
+                    channel = SECONDARY_SERVER_CHANNEL_1;
+                }
+                else
+                {
+                    channel = SECONDARY_SERVER_CHANNEL_2;
+                }
+
+                // Set the channel in the message structure
+                dtt->msg.msg_type = channel;
+                dtt->index = 0;
+                // Create a new thread to handle BFS
+                if (pthread_create(&thread_ids[msg.data.seq_num], NULL, bfs_mainthread, (void *)dtt) != 0)
+                {
+                    perror("[Secondary Server] Error in DFS thread creation");
+                    exit(EXIT_FAILURE);
+                }
+            }
+            else if (msg.data.operation == 5)
+            {
+                // Operation code for cleanup
+                for (int i = 0; i < 200; i++)
+                {
+                    pthread_join(thread_ids[i], NULL);
+                }
+            }
+        }
+    }
+
+    return 0;
+}
 
